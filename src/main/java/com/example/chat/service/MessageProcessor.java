@@ -11,6 +11,7 @@ import com.example.chat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
@@ -28,26 +29,38 @@ public class MessageProcessor {
         ChatRoom chatRoom = chatRoomRepository.findById(messageDto.getChatRoomId())
                 .orElseThrow(() -> new RuntimeException("ChatRoom not found"));
         Optional<User> sender = userRepository.findById(messageDto.getFrom());
-        Optional<User> reciever = userRepository.findById(messageDto.getTo());
+        Optional<User> receiver = userRepository.findById(messageDto.getTo());
+        
+        User senderUser = sender.orElseThrow(() -> new RuntimeException("sender not found"));
+        User receiverUser = receiver.orElseThrow(() -> new RuntimeException("receiver not found"));
+        
+        LocalDateTime timestamp = LocalDateTime.now();
+        
         // Save to DB
         Message msg = Message.builder()
                 .chatRoom(chatRoom)
-                .sender(sender.orElseThrow(() -> new RuntimeException("sender not found")))
-                .receiver(reciever.orElseThrow(() -> new RuntimeException("reciever not found")))
+                .sender(senderUser)
+                .receiver(receiverUser)
                 .content(messageDto.getContent())
+                .timestamp(timestamp)
                 .status(MessageStatus.SENT)
                 .messageType(messageDto.getMessageType())
                 .build();
         messageRepository.save(msg);
 
+        // Set timestamp in the DTO for delivery
+        messageDto.setTimestamp(timestamp);
+
         // Deliver or mark as pending
-        if (presenceService.isUserOnline(String.valueOf(messageDto.getTo()))) {
+        if (presenceService.isUserOnline(receiverUser.getUsername())) {
             msg.setStatus(MessageStatus.DELIVERED);
             messageRepository.save(msg);
+            messageDto.setStatus(MessageStatus.DELIVERED);
             chatService.deliverMessage(messageDto);
         } else {
             msg.setStatus(MessageStatus.PENDING);
             messageRepository.save(msg);
+            messageDto.setStatus(MessageStatus.PENDING);
         }
     }
 }
